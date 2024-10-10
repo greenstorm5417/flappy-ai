@@ -1,0 +1,5 @@
+pygame
+torch
+numpy
+neat-python
+pickle5
