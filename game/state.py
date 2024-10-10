@@ -4,6 +4,7 @@ from game.layer import Layer
 from game.column import Column
 from game.assets import get_sprite
 from game.configs import SCREEN_WIDTH, SCREEN_HEIGHT
+from game.configs import PIPE_GAP_SIZE
 
 def get_game_state(sprites, bird):
     """
@@ -45,13 +46,12 @@ def get_game_state(sprites, bird):
             'dist_to_bottom_pipe': dist_to_bottom_pipe
         }
     else:
-        default_gap_size = 150
         return {
             'screen_width': SCREEN_WIDTH,
             'screen_height': SCREEN_HEIGHT,
             'next_pipe_x': SCREEN_WIDTH,
             'next_pipe_gap_y': SCREEN_HEIGHT / 2,
-            'pipe_gap_size': default_gap_size,
+            'pipe_gap_size': PIPE_GAP_SIZE,
             'bird_y': bird.rect.y,
             'bird_vel': bird.flap,
             'pipe_dist': SCREEN_WIDTH - bird.rect.x,

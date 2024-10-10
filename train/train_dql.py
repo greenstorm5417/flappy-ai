@@ -4,7 +4,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pygame
-import random
+import datetime
 import numpy as np
 from ai.dql_controller import DQNController
 from game.assets import load_sprites, get_sprite
@@ -110,6 +110,12 @@ def train_dql():
     info_surface = pygame.Surface((SCREEN_WIDTH, 200))
     load_sprites()
     dqn_controller = DQNController()
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    unique_identifier = f"{timestamp}"
+    folder_name = f"dql_{unique_identifier}"
+    save_dir = os.path.join('dqn_models', folder_name)
+    os.makedirs(save_dir, exist_ok=True)
+    print(f"Models will be saved to: {save_dir}")
     dqn_models_dir = 'dqn_models'
     os.makedirs(dqn_models_dir, exist_ok=True)
     NUM_EPISODES = 1000
@@ -124,7 +130,7 @@ def train_dql():
                     pygame.quit()
                     sys.exit()
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_s:
-                    model_path = os.path.join(dqn_models_dir, 'current_dql_model.pth')
+                    model_path = os.path.join(save_dir, 'current_dql_model.pth')
                     dqn_controller.save_model(model_path)
                     print(f"DQL model saved to '{model_path}'")
             current_time = pygame.time.get_ticks()
@@ -187,12 +193,13 @@ def train_dql():
             pygame.display.flip()
             clock.tick(FPS)
         if episode % 50 == 0:
-            model_path = os.path.join(dqn_models_dir, f'dqn_model_episode_{episode}.pth')
+            model_path = os.path.join(save_dir, f'dqn_model_episode_{episode}.pth')
             dqn_controller.save_model(model_path)
             print(f"DQL model saved to '{model_path}'")
-    final_model_path = os.path.join(dqn_models_dir, 'dqn_model_final.pth')
+
+    final_model_path = os.path.join(save_dir, 'dqn_model_final.pth')
     dqn_controller.save_model(final_model_path)
-    print("Training completed.")
+    print("Training completed. Final DQL model saved.")
 
 def main():
     train_dql()

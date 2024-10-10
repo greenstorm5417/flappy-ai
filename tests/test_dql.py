@@ -1,10 +1,13 @@
 import sys
 import os
 
+# Add the parent directory to sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pygame
 import numpy as np
+import torch
+import torch.nn as nn  # For accessing the DQN model's layers
 
 from ai.dql_controller import DQNController
 from game.assets import load_sprites, get_sprite
@@ -32,11 +35,97 @@ info_surface = pygame.Surface((SCREEN_WIDTH, 200))
 x_pos = 50
 y_pos = (window_height - SCREEN_HEIGHT) // 2
 
+# Neural network visualization surface
+nn_surface = pygame.Surface((600, SCREEN_HEIGHT))
+nn_x_pos = x_pos + SCREEN_WIDTH
+nn_y_pos = y_pos
+
+# Ensure neural network visualization fits within the screen
+NN_WIDTH = 600
+if nn_x_pos + NN_WIDTH > window_width:
+    raise ValueError("Neural Network visualization window exceeds screen width. Adjust NN_WIDTH or window size.")
+
 # Load sprites
 load_sprites()
 
 def clamp(value, min_value=0, max_value=255):
     return max(min_value, min(int(value), max_value))
+
+def draw_dqn_neural_network(screen, model, input_labels, output_labels, position=(50, 50), scale=600, weight_threshold=0.5):
+    """
+    Draws the neural network architecture and weights from a PyTorch model.
+
+    Args:
+        screen (pygame.Surface): The surface to draw on.
+        model (torch.nn.Module): The neural network model.
+        input_labels (list of str): Labels for the input nodes.
+        output_labels (list of str): Labels for the output nodes.
+        position (tuple): Top-left position to start drawing.
+        scale (int): Scaling factor for the visualization.
+        weight_threshold (float): Minimum absolute weight value to display a connection.
+    """
+    # Extract layers and weights from the model
+    layers = []
+    layer_sizes = []
+    for name, module in model.named_children():
+        if isinstance(module, nn.Linear):
+            layers.append(module)
+            layer_sizes.append(module.in_features)
+    # Add output layer size
+    layer_sizes.append(layers[-1].out_features)
+
+    total_layers = len(layer_sizes) - 1  # Number of connections
+
+    # Calculate spacing
+    horizontal_spacing = scale // (total_layers + 1)
+    vertical_spacing = scale // (max(layer_sizes) + 1)
+
+    # Determine node positions
+    node_positions = {}
+    for layer_idx, size in enumerate(layer_sizes):
+        x = position[0] + horizontal_spacing * (layer_idx)
+        for node_idx in range(size):
+            y = position[1] + vertical_spacing * (node_idx + 1)
+            node_positions[(layer_idx, node_idx)] = (x, y)
+
+    # Draw connections
+    for layer_idx, layer in enumerate(layers):
+        weights = layer.weight.detach().cpu().numpy()
+        for from_idx in range(weights.shape[1]):
+            for to_idx in range(weights.shape[0]):
+                weight = weights[to_idx, from_idx]
+                if abs(weight) < weight_threshold:
+                    continue  # Skip drawing connections with small weights
+                from_pos = node_positions[(layer_idx, from_idx)]
+                to_pos = node_positions[(layer_idx + 1, to_idx)]
+                # Determine color based on weight sign and magnitude
+                if weight > 0:
+                    color = (0, clamp(int(abs(weight) * 255), max_value=255), 0)  # Greenish for positive weights
+                else:
+                    color = (clamp(int(abs(weight) * 255), max_value=255), 0, 0)  # Reddish for negative weights
+                # Line thickness based on weight magnitude
+                thickness = max(1, int(abs(weight) * 3))
+                pygame.draw.line(screen, color, from_pos, to_pos, thickness)
+
+    # Draw nodes with labels
+    node_radius = 10
+    font = pygame.font.SysFont(None, 18)
+
+    for (layer_idx, node_idx), pos in node_positions.items():
+        if layer_idx == 0:
+            color = (255, 165, 0)  # Orange for Input
+            label = input_labels[node_idx] if node_idx < len(input_labels) else f"I{node_idx}"
+        elif layer_idx == len(layer_sizes) - 1:
+            color = (0, 0, 255)    # Blue for Output
+            label = output_labels[node_idx] if node_idx < len(output_labels) else f"O{node_idx}"
+        else:
+            color = (255, 255, 255)  # White for Hidden
+            label = f"H{layer_idx}_{node_idx}"
+        pygame.draw.circle(screen, color, pos, node_radius)
+        # Optional: Comment out labels to reduce drawing overhead
+        label_surface = font.render(label, True, (255, 255, 255))
+        label_rect = label_surface.get_rect(center=(pos[0], pos[1] - node_radius - 10))
+        screen.blit(label_surface, label_rect)
 
 def draw_bird_inputs(screen, bird, game_state):
     if not game_state:
@@ -119,102 +208,96 @@ def reset_game(sprites, controller):
     score = Score(sprites)
     return bird, last_column_time, score
 
-def train_dql():
-    dqn_controller = DQNController()
+def main():
+    dqn_controller = DQNController(is_training=False)
     dqn_models_dir = 'dqn_models'
     os.makedirs(dqn_models_dir, exist_ok=True)
-    NUM_EPISODES = 1000
+    model_path = os.path.join(dqn_models_dir, 'current_dql_model.pth')
+    if not os.path.exists(model_path):
+        print(f"Trained DQL model not found at '{model_path}'. Please train the model first.")
+        sys.exit(1)
+    dqn_controller.load_model(model_path)
 
-    for episode in range(1, NUM_EPISODES + 1):
-        sprites = pygame.sprite.LayeredUpdates()
-        bird, last_column_time, score = reset_game(sprites, dqn_controller)
-        total_reward = 0
-        running = True
+    # Load sprites
+    load_sprites()
+    sprites = pygame.sprite.LayeredUpdates()
+    bird, last_column_time, score = reset_game(sprites, dqn_controller)
 
-        while running:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    pygame.quit()
-                    sys.exit()
-                if event.type == pygame.KEYDOWN and event.key == pygame.K_s:
-                    model_path = os.path.join(dqn_models_dir, 'current_dql_model.pth')
-                    dqn_controller.save_model(model_path)
-                    print(f"DQL model saved to '{model_path}'")
+    # Prepare input and output labels
+    input_labels = [
+        "Bird Y Position",
+        "Bird Velocity",
+        "Pipe Distance X",
+        "Pipe Gap Y",
+        "Dist to Top Pipe",
+        "Dist to Bottom Pipe"
+    ]
+    output_labels = [
+        "No Flap",
+        "Flap"
+    ]
 
-            current_time = pygame.time.get_ticks()
-            if current_time - last_column_time > 1500:
-                sprites.add(Column(sprites))
-                last_column_time = current_time
+    # Draw neural network visualization once
+    nn_surface.fill((0, 0, 0))
+    draw_dqn_neural_network(
+        nn_surface,
+        dqn_controller.policy_net,
+        input_labels=input_labels,
+        output_labels=output_labels,
+        position=(50, 50),
+        scale=500,
+        weight_threshold=1.0  # Adjust this threshold to reduce connections
+    )
 
-            game_state = get_game_state(sprites, bird)
-            state = np.array([
-                game_state['bird_y'] / SCREEN_HEIGHT,
-                game_state['bird_vel'] / 10,
-                game_state['pipe_dist'] / SCREEN_WIDTH,
-                game_state['next_pipe_gap_y'] / SCREEN_HEIGHT,
-                game_state['dist_to_top_pipe'] / SCREEN_HEIGHT,
-                game_state['dist_to_bottom_pipe'] / SCREEN_HEIGHT
-            ])
+    running = True
+    while running:
+        # Handle events
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                pygame.quit()
+                sys.exit()
 
-            action = dqn_controller.select_action(state)
-            bird.flap = -6 if action == 1 else bird.flap
+        # Game logic and updates
+        current_time = pygame.time.get_ticks()
+        if current_time - last_column_time > 1500:
+            sprites.add(Column(sprites))
+            last_column_time = current_time
 
-            sprites.update(game_state)
-            next_game_state = get_game_state(sprites, bird)
-            next_state = np.array([
-                next_game_state['bird_y'] / SCREEN_HEIGHT,
-                next_game_state['bird_vel'] / 10,
-                next_game_state['pipe_dist'] / SCREEN_WIDTH,
-                next_game_state['next_pipe_gap_y'] / SCREEN_HEIGHT,
-                next_game_state['dist_to_top_pipe'] / SCREEN_HEIGHT,
-                next_game_state['dist_to_bottom_pipe'] / SCREEN_HEIGHT
-            ])
+        game_state = get_game_state(sprites, bird)
+        state = np.array([
+            game_state['bird_y'] / SCREEN_HEIGHT,
+            game_state['bird_vel'] / 10,
+            game_state['pipe_dist'] / SCREEN_WIDTH,
+            game_state['next_pipe_gap_y'] / SCREEN_HEIGHT,
+            game_state['dist_to_top_pipe'] / SCREEN_HEIGHT,
+            game_state['dist_to_bottom_pipe'] / SCREEN_HEIGHT
+        ])
+        action = dqn_controller.select_action(state)
+        bird_action = 'flap' if action == 1 else 'no_flap'
+        if bird_action == 'flap':
+            bird.flap = -6
 
-            done = bird.check_collision(sprites)
-            if done:
-                reward = -40
-                dqn_controller.store_transition(state, action, reward, next_state, done)
-                dqn_controller.optimize_model()
-                running = False
-            else:
-                reward = -0.25
-                for sprite in sprites.get_sprites_from_layer(Layer.OBSTACLE):
-                    if isinstance(sprite, Column) and sprite.is_passed():
-                        reward += 5
-                        score.value += 1
-                        break
-                y_diff = abs(bird.rect.y - next_game_state['next_pipe_gap_y'])
-                if y_diff <= 30:
-                    reward += 20
-                elif y_diff > 50:
-                    punishment = (y_diff - 30) * 0.02
-                    reward -= punishment
-                dqn_controller.store_transition(state, action, reward, next_state, done)
-                dqn_controller.optimize_model()
+        sprites.update()
+        if bird.check_collision(sprites):
+            bird, last_column_time, score = reset_game(sprites, dqn_controller)
 
-            total_reward += reward
-            game_surface.fill((0, 0, 0))
-            sprites.draw(game_surface)
-            draw_bird_inputs(game_surface, bird, game_state)
-            draw_bird_info_text(info_surface, bird, game_state)
+        # Drawing
+        game_surface.fill((0, 0, 0))
+        sprites.draw(game_surface)
+        draw_bird_inputs(game_surface, bird, game_state)
+        draw_bird_info_text(info_surface, bird, game_state)
 
-            screen.fill((0, 0, 0))
-            screen.blit(info_surface, (x_pos, 0))
-            screen.blit(game_surface, (x_pos, y_pos))
-            pygame.display.flip()
-            clock.tick(FPS)
+        # Render everything on the main screen
+        screen.fill((0, 0, 0))
+        screen.blit(info_surface, (x_pos, 0))
+        screen.blit(game_surface, (x_pos, y_pos))
+        screen.blit(nn_surface, (nn_x_pos, nn_y_pos))
+        pygame.display.flip()
+        clock.tick(FPS)
 
-        if episode % 50 == 0:
-            model_path = os.path.join(dqn_models_dir, f'dqn_model_episode_{episode}.pth')
-            dqn_controller.save_model(model_path)
-            print(f"DQL model saved to '{model_path}'")
-
-    final_model_path = os.path.join(dqn_models_dir, 'dqn_model_final.pth')
-    dqn_controller.save_model(final_model_path)
-    print("Training completed.")
-
-def main():
-    train_dql()
 
 if __name__ == "__main__":
     main()

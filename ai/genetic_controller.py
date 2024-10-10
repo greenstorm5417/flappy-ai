@@ -2,61 +2,84 @@ import random
 import numpy as np
 
 class GeneticController:
-    def __init__(self, input_size=4, output_size=1, population_size=50):
+    def __init__(self, input_size=6, hidden_sizes=[10, 10], output_size=2, population_size=50, mutation_rate=0.1):
         self.input_size = input_size
+        self.hidden_sizes = hidden_sizes
         self.output_size = output_size
         self.population_size = population_size
-        self.genomes = [self.initialize_genome() for _ in range(self.population_size)]
-        self.fitness_scores = [0] * self.population_size
+        self.mutation_rate = mutation_rate
+
+        # Initialize population: list of neural networks (as weight matrices)
+        self.population = [self.initialize_genome() for _ in range(self.population_size)]
+        self.fitness_scores = [0.0 for _ in range(self.population_size)]
         self.current_genome = 0
 
     def initialize_genome(self):
-        # Simple genome: weights for a single-layer neural network
-        return np.random.uniform(-1, 1, (self.output_size, self.input_size))
+        """Initialize a genome as a list of weight matrices for each layer."""
+        genome = []
+        layer_sizes = [self.input_size] + self.hidden_sizes + [self.output_size]
+        for i in range(len(layer_sizes)-1):
+            # Initialize weights with small random values
+            weights = np.random.randn(layer_sizes[i], layer_sizes[i+1]) * 0.5
+            genome.append(weights)
+        return genome
 
-    def decide_action(self, bird, game_state):
-        genome = self.genomes[self.current_genome]
-        if not game_state:
-            return 'no_flap'
-        
-        bird_y = bird.rect.y / game_state['screen_height']
-        bird_vel = bird.flap / 10
-        pipe_dist = (game_state['next_pipe_x'] - bird.rect.x) / game_state['screen_width']
-        pipe_gap = game_state['next_pipe_gap_y'] / game_state['screen_height']
-        
-        inputs = np.array([bird_y, bird_vel, pipe_dist, pipe_gap])
-        output = np.dot(genome, inputs)
-        
-        return 'flap' if output[0] > 0 else 'no_flap'
+    def decide_action(self, genome, inputs):
+        """Feedforward neural network to decide action based on inputs."""
+        activation = inputs
+        for idx, weights in enumerate(genome):
+            z = np.dot(activation, weights)
+            if idx < len(genome) -1:
+                # Hidden layers use ReLU activation
+                activation = np.maximum(0, z)
+            else:
+                # Output layer uses softmax
+                exp_z = np.exp(z - np.max(z))  # For numerical stability
+                activation = exp_z / exp_z.sum()
+        return np.argmax(activation)
 
-    def update_fitness(self, score):
-        self.fitness_scores[self.current_genome] += score
+    def evaluate_fitness(self, fitness_function):
+        """Evaluate fitness for each genome using the provided fitness function."""
+        for idx, genome in enumerate(self.population):
+            self.fitness_scores[idx] = fitness_function(genome)
 
-    def next_genome(self):
-        self.current_genome += 1
-        if self.current_genome >= self.population_size:
-            self.evolve()
-            self.current_genome = 0
+    def select_parents(self, num_parents):
+        """Select the top genomes as parents based on fitness."""
+        parents_idx = np.argsort(self.fitness_scores)[-num_parents:]
+        return [self.population[idx] for idx in parents_idx]
 
-    def evolve(self):
-        # Selection: Select top 20% genomes
-        sorted_indices = np.argsort(self.fitness_scores)[::-1]
-        top_indices = sorted_indices[:int(0.2 * self.population_size)]
-        top_genomes = [self.genomes[i] for i in top_indices]
+    def crossover(self, parent1, parent2):
+        """Crossover two parent genomes to produce a child genome."""
+        child = []
+        for w1, w2 in zip(parent1, parent2):
+            mask = np.random.rand(*w1.shape) < 0.5
+            child_weights = np.where(mask, w1, w2)
+            child.append(child_weights)
+        return child
 
-        # Crossover and mutation to create new population
-        new_genomes = []
-        for _ in range(self.population_size):
-            parent1, parent2 = random.sample(top_genomes, 2)
-            child = (parent1 + parent2) / 2
-            # Mutation
-            mutation = np.random.uniform(-0.1, 0.1, child.shape)
-            child += mutation
-            new_genomes.append(child)
+    def mutate(self, genome):
+        """Mutate a genome by adding Gaussian noise."""
+        for i in range(len(genome)):
+            mutation_mask = np.random.rand(*genome[i].shape) < self.mutation_rate
+            gaussian_noise = np.random.randn(*genome[i].shape) * 0.5
+            genome[i] += mutation_mask * gaussian_noise
+        return genome
 
-        self.genomes = new_genomes
-        self.fitness_scores = [0] * self.population_size
+    def evolve(self, num_parents=10):
+        """Evolve the population to produce the next generation."""
+        parents = self.select_parents(num_parents)
+        next_generation = parents.copy()
 
-    def reset(self):
-        # Reset fitness scores if needed
-        self.fitness_scores = [0] * self.population_size
+        # Crossover to produce offspring
+        while len(next_generation) < self.population_size:
+            parent1, parent2 = random.sample(parents, 2)
+            child = self.crossover(parent1, parent2)
+            child = self.mutate(child)
+            next_generation.append(child)
+
+        self.population = next_generation
+        self.fitness_scores = [0.0 for _ in range(self.population_size)]
+
+    def reset_fitness(self):
+        """Reset fitness scores for the next generation."""
+        self.fitness_scores = [0.0 for _ in range(self.population_size)]

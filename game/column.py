@@ -4,11 +4,12 @@ import pygame.sprite
 import game.assets
 import game.configs
 from game.layer import Layer
+from game.configs import PIPE_GAP_SIZE
 
 class Column(pygame.sprite.Sprite):
     def __init__(self, *groups):
         self._layer = Layer.OBSTACLE
-        self.gap = 150  # Adjusted gap for larger screen
+        self.gap = PIPE_GAP_SIZE
 
         self.sprite = game.assets.get_sprite("pipe-green")
         if self.sprite is None:
