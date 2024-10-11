@@ -65,7 +65,7 @@ def init_controllers():
     dqn_models_dir = 'dqn_models'
     os.makedirs(dqn_models_dir, exist_ok=True)
     dqn_controller = DQNController(is_training=False)
-    model_path = os.path.join(dqn_models_dir, 'current_dql_model.pth')
+    model_path = os.path.join(dqn_models_dir, 'dql_20241010_150115\\dqn_model_episode_800.pth')
     if not os.path.exists(model_path):
         print(f"Trained DQL model not found at '{model_path}'. Please train the model first.")
         sys.exit(1)
@@ -73,7 +73,7 @@ def init_controllers():
     controllers['DQL'] = dqn_controller
 
     # NEAT Controller
-    neat_controller = NEATController(config_path='neat-config.txt', genome_path='neat_models/best_neat_genome.pkl')
+    neat_controller = NEATController(config_path='neat-config.txt', genome_path='neat_models\\old\\current_neat_genome.pkl')
     if neat_controller.genome is None:
         print("No genome loaded. Please ensure 'neat_models/best_neat_genome.pkl' exists and is a valid NEAT genome.")
         sys.exit(1)

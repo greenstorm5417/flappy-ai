@@ -304,7 +304,7 @@ def main():
             config (neat.Config): NEAT configuration.
         """
         current_generation = generation[0]
-        max_score = current_generation * 5
+        max_score = 20 + (current_generation * 2)
         print(f"Evaluating Generation {current_generation} with max score {max_score}")
 
         # Reset the game with current genomes
@@ -388,6 +388,10 @@ def main():
                     generation=current_generation, 
                     max_score=max_score
                 )
+                
+                # Clear the nn_surface before drawing the neural network
+                nn_surface.fill((0, 0, 0))  # Black background
+
                 # Draw neural network visualization for the best genome
                 best_genome = max(genomes, key=lambda g: g[1].fitness)[1]
                 draw_neural_network(
@@ -413,7 +417,7 @@ def main():
         generation[0] += 1
 
         # Save the best genome of the current generation
-        if genomes:
+        if generation % 10 == 0:
             best_genome = max(genomes, key=lambda g: g[1].fitness)[1]
             save_path = os.path.join(save_dir, f'best_genome_gen_{current_generation}.pkl')
             with open(save_path, 'wb') as f:
@@ -421,7 +425,7 @@ def main():
             print(f"Best genome of generation {current_generation} saved to '{save_path}'")
 
     # Run NEAT
-    winner = neat_controller.run(eval_genomes, n_generations=50)
+    winner = neat_controller.run(eval_genomes, n_generations=200)
 
     # Save the final best genome
     final_save_path = os.path.join(save_dir, 'best_neat_genome.pkl')

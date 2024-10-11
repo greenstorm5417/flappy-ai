@@ -27,7 +27,7 @@ def get_game_state(sprites, bird):
         next_pipe = min(pipes, key=lambda pipe: pipe.rect.x)
         pipe_dist = next_pipe.rect.x - bird.rect.x
         pipe_gap_y = next_pipe.get_gap_center_y()
-        pipe_gap_size = next_pipe.gap  # Assuming 'gap' is an attribute representing the size
+        pipe_gap_size = next_pipe.gap
 
         # Calculate distances to top and bottom pipes
         dist_to_top_pipe = bird.rect.top - (pipe_gap_y - pipe_gap_size / 2)

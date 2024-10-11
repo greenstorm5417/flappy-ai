@@ -5,6 +5,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pygame
 import datetime
+import random
 import numpy as np
 from ai.dql_controller import DQNController
 from game.assets import load_sprites, get_sprite
