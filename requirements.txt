@@ -3,3 +3,5 @@ torch
 numpy
 neat-python
 pickle5
+neat-python
+numpy
