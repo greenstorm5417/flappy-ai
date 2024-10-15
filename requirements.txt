@@ -1,6 +1,5 @@
 pygame
-torch
 numpy
 neat-python
 pickle5
-numpy
+torch
